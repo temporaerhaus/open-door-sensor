@@ -4,19 +4,24 @@ require("client")
 Door.pin = 01
 gpio.mode(Door.pin, gpio.INPUT, gpio.PULLUP)
 Door.curstate = "undetermined"
+Door.lastcheckin = 0
+Door.checkin_interval = 1000
+Door.remote_timeout = 5
 
 function Door.getstate()   
-    state = gpio.read(Door.pin)
-    if(state==1) then return "closed"
-    else return "open" end
+    local state = gpio.read(Door.pin)
+    if(state==1) then return "open"
+    else return "closed" end
 end
 
 function Door.setstate(state)
     Door.curstate = state
     print("Door real state: "..Door.curstate)
     print(node.heap())
-    Client.put(state, function(webstate)
-        print("Door web state: "..webstate)
+    Client.put(state, function(webstate, timeout)
+        print("Server want regular posts with interval: "..timeout)
+        Door.remote_timeout = timeout/2;
+        print("Door web state: "..webstate.." timeout: "..timeout)
         print(node.heap())
     end)
 end
@@ -29,20 +34,30 @@ function Door.stop()
     end
 end
 
-function Door.start(delay)
-    Door.stop()
-    print("Ich starte den Tür Sensor")
+function Door.check_state()
+    local state = Door.getstate() 
     print(node.heap())
-    tmr.alarm(6, delay*1000 or 3000, tmr.ALARM_AUTO, function()
-        local state = Door.getstate()
-        collectgarbage()
-        if(state ~= Door.curstate) then
-            Door.setstate(state)       
-        end 
-    end)
+    collectgarbage()  
+    print(node.heap()) 
+    print(Door.curstate.. " -> "..state)
+    Door.lastcheckin = Door.lastcheckin+1;
+    if(state ~= Door.curstate or (Door.lastcheckin>=Door.checkin_interval)) then
+        Door.lastcheckin=0
+        Door.setstate(state)       
+    end 
 end
 
-Door.start(3)
+function Door.start(delay)
+    Door.stop()
+    print("Ich starte den TÃ¼r Sensor")
+    print(node.heap())
+    local interval = delay or 3  
+    -- 8 minuten * 60 s * 1000 ms = 480.000 millisekunden, / intervall = 3000 millisekunden, = jeder 160te check
+    Door.checkin_interval = interval*1000
+    tmr.alarm(6, Door.checkin_interval, tmr.ALARM_AUTO, Door.check_state)
+end
+
+--Door.start(3)
 
 return Door
 

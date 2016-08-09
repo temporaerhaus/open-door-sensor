@@ -81,14 +81,15 @@ function NetHttp.requestip(ip, request, callback)
     local headers=nil
     local buf=""
     local chunked=false
-    conn:on("connection", function()                
-        conn:send(request)             
+
+    conn:on("connection", function(c)                
+        c:send(request)     
       end)
-    conn:on("receive", function(conn, res) 
+    conn:on("receive", function(c, res)         
         if(res==nil) then print("----EMPTY PACKET!! BAD!!----"); return end
         --print("received in http:\nPACKET--------------------------------\n"..res)       
         if(headers==nil) then -- read headers first in one chunk
-            print("header empty")
+            --print("header empty")
             local i,j = string.find(res, "\r\n\r\n")    -- find 2 newlines
             local head = res:sub(0,i-1)
             res = res:sub(j+1)
@@ -100,28 +101,30 @@ function NetHttp.requestip(ip, request, callback)
             end
             if(headers["Set-Cookie"] ~= nil) then
                 cookie = string.sub(headers["Set-Cookie"]:match("PHPSESSID=%w+;"),0,-2)
-                print("Storing cookie monster! "..cookie)
+                --print("Storing cookie monster! "..cookie)
                 NetHttp.cookie = cookie
             end
         end
         if(res:len() ~= 0 and chunked) then
             --print("appendign chunk")
             buf = buf..NetHttp.read_chunk(res, function()
+                c:close()
                 callback(headers, buf)
             end)
         else
+            c:close()
             callback(headers, res)
         end
     end)    
     conn:connect(80,ip)            
 end
 
-function NetHttp.build_request(host, resource, method, headers, body)
+function NetHttp.build_request(host, resource, method, _headers, _body)
     local method = method or "GET"
     local resource = resource or "/"
     local host = host or ip
-    local body = body or ""
-    local headers = headers or "Connection: keep-alive\r\nAccept: application/json"
+    local body = _body or " "
+    local headers = _headers or "Connection: keep-alive\r\nAccept: application/json"
     if(NetHttp.cookie ~= nil) then
         print("Can has Cookie Monster: "..NetHttp.cookie)
         headers = headers.."\r\nCookie: "..NetHttp.cookie;
@@ -148,33 +151,45 @@ end
 
 --------------------------------- UNIT TESTS ------------------------------
 
-function test_get(ip)
-    NetHttp.request_ip(ip, "weinhof9.de", "/wp-json/open-door/state/", "GET", nil, nil, function(headers, body)
-         print("GOT:\r\nHEADERS:\r\n"..to_string(headers).."\r\nBODY:\r\n"..(body or "NIX"))
+function test_get()
+    NetHttp.request("weinhof9.de", "/wp-json/open-door/state/", "GET", nil, nil, function(headers, body)
+         --print("GOT:\r\nHEADERS:\r\n"..to_string(headers).."\r\nBODY:\r\n"..(body or "NIX"))
          tmr.alarm(0, 500, tmr.ALARM_SINGLE, function() 
                  print("POSTING")
-                 test_post(ip)
+                 test_post()
          end)         
     end)
 end
 
-function test_post(ip)
+function test_post()
     local body = '{"open-door":{"state":"Hello World!","body":"This is my first post!"}}'
     local headers = "Connection: keep-alive"
         .."\r\nAccept: application/json"
         .."\r\nContent-Type: application/json"
         .."\r\nContent-Length: "..body:len()
     --headers = "Host: weinhof9.de\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: 57\r\nConnection: keep-alive\r\n"
-    NetHttp.request_ip(ip, "weinhof9.de", "/wp-json/open-door/state/", "POST", headers, body, function(headers, body)
+    NetHttp.request("weinhof9.de", "/wp-json/open-door/state/", "POST", headers, body, function(headers, body)
         local headers = headers or {}
         local body = body or "NIX"
-        print("DONE:\r\nHEADERS:\r\n"..to_string(headers).."\r\nBODY:\r\n"..(body or "NIX"))
+        --print("DONE:\r\nHEADERS:\r\n"..to_string(headers).."\r\nBODY:\r\n"..(body or "NIX"))
+        after_test_get()
     end)
 end    
 
---NetHttp.resolve("weinhof9.de", function(ip)
-    --test_get(ip)
---end)
+function run_tests()
+    global_test_i=0
+    print(node.heap())
+    test_get(after_test_get)
+end
+
+function after_test_get()
+    global_test_i = global_test_i+1
+    print("-------------------\r\n-- finished test --\r\n-- "..global_test_i.." --\r\n-- with --r\n-- "..(node.heap()/1000).." kb --\r\n-- memory to spare! --\r\n")
+    if global_test_i<10000 then test_get() end
+end
+
+--run_tests()
+
 
 --------------------------------- /UNIT TESTS -----------------------------
 
