@@ -12,6 +12,7 @@
 define("open_door_options_name", "open_door_options");
 define("open_door_door_state", "door_state");
 define("open_door_door_state_timestamp", "door_state_timestamp");
+define("open_door_debug_log", "debug_log");
 define("open_door_demo_door_state", "demo_door_state");
 define('OPEN_DOOR_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
@@ -135,6 +136,12 @@ add_action( 'rest_api_init', function () {
         	'callback' => 'jsonSetDoorState',		
 	),
     ));
+ register_rest_route( 'open-door', '/log', array(
+	array(
+	        'methods' => 'GET',
+	        'callback' => 'jsonGetLog',
+	),
+    ));
 });
 
 
@@ -146,14 +153,47 @@ function get_nonce() {
 	return base64_encode($bytes);	
 }
 
+function get_user_ip() {
+if ( ! empty( $_SERVER['HTTP_CLIENT_IP'] ) ) {
+//check ip from share internet
+$ip = $_SERVER['HTTP_CLIENT_IP'];
+} elseif ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+//to check ip is pass from proxy
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+} else {
+$ip = $_SERVER['REMOTE_ADDR'];
+}
+return apply_filters( 'wpb_get_ip', $ip );
+}
+
+function write_log($entry){
+	$options= get_option( open_door_options_name );
+	if( !is_array($options[open_door_debug_log]) ) {
+		unset($options[open_door_debug_log]);
+		$options[open_door_debug_log] = array("0" => date('Y-m-d H:i:s')." [".get_user_ip()."] : Start logging",);
+	}
+	array_push($options[open_door_debug_log], date('Y-m-d H:i:s')." [".get_user_ip()."] : ".$entry);
+	//unset($options[open_door_debug_log]);
+	update_option( open_door_options_name, $options);
+}
+
+function jsonGetLog( $request ) {	
+	$options= get_option( open_door_options_name );
+	$log = $options[open_door_debug_log];
+	$container = array( "open-door" => array(
+    		"log" => $log,
+	), );
+	return $container;
+}
 
 function jsonGetDoorState( $request ) {	
+	write_log("Get Door State");
 	if( $_SESSION['open-door-nonce'] == NULL ) {
 		$_SESSION['open-door-nonce'] = get_nonce();
 	}
 	$config = new Config_Open_Door();
 	$container = array( "open-door" => array(
-    		"state" => get_door_state(),
+    	"state" => get_door_state(),
 		"nonce" => $_SESSION['open-door-nonce'],	
 		"timeout" => $config->get_open_door_timeout(),
 		"lastseen" => get_door_last_seen_minutes(),	
@@ -161,25 +201,31 @@ function jsonGetDoorState( $request ) {
 	return $container;
 }
 
+function make_error($error) {
+	write_log("Error: ".$error);
+	return array( 'error'=>$error);
+}
+
 function jsonSetDoorState( $request ) {	
+	write_log("Set Door State");
 	$parameters = $request->get_json_params();	
 	$values = $parameters['open-door'];
-	if($values == NULL) return array( 'error'=>'Unknown request');
+	if($values == NULL) return make_error( 'Unknown request');
 	
 	$nonce = $values['nonce'];
-	if($nonce == NULL) return array( 'error'=>'Forbidden without nonce');
-	if($nonce != $_SESSION['open-door-nonce']) return array( 'error'=>'Invalid nonce');
+	if($nonce == NULL) return make_error( 'Forbidden without nonce');
+	if($nonce != $_SESSION['open-door-nonce']) return make_error( 'Invalid nonce');
 	$_SESSION['open-door-nonce'] = NULL;
 	$state = $values['state'];
-	if($state == NULL) return array( 'error'=>'Bad request' );
+	if($state == NULL) return make_error( 'Bad request' );
 	$signature = $values['signature'];
-	if($signature == NULL) return array( 'error'=>'Unsigned content');
+	if($signature == NULL) return make_error( 'Unsigned content');
 	
 	$config = new Config_Open_Door();
 	$key=$config->get_open_door_key();
 	$raw = $nonce.$state.$key;
 	$mysign = hash( "sha256" , $raw, false);
-	if($signature != $mysign) return array( "error"=>"Integrity check failed!", ); 
+	if($signature != $mysign) return make_error( 'Integrity check failed!' ); 
 	
 	// Now really do the update
 	$oldstate= set_door_state($state);
