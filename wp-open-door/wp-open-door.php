@@ -166,15 +166,15 @@ $ip = $_SERVER['REMOTE_ADDR'];
 return apply_filters( 'wpb_get_ip', $ip );
 }
 
-function write_log($entry){
-	$options= get_option( open_door_options_name );
-	if( !is_array($options[open_door_debug_log]) ) {
-		unset($options[open_door_debug_log]);
-		$options[open_door_debug_log] = array("0" => date('Y-m-d H:i:s')." [".get_user_ip()."] : Start logging",);
-	}
-	array_push($options[open_door_debug_log], date('Y-m-d H:i:s')." [".get_user_ip()."] : ".$entry);
-	//unset($options[open_door_debug_log]);
-	update_option( open_door_options_name, $options);
+function format_log_entry($entry){
+	return date('Y-m-d H:i:s')." [".get_user_ip()."] : ".$entry."\n";
+}
+
+function write_log($entry){	
+	$opendoorlog = plugin_dir_path( __FILE__ )."log.txt";
+	$logfile = fopen($opendoorlog, "a");
+	fwrite($logfile, format_log_entry($entry));
+	fclose($logfile );
 }
 
 function jsonGetLog( $request ) {	
@@ -187,13 +187,14 @@ function jsonGetLog( $request ) {
 }
 
 function jsonGetDoorState( $request ) {	
-	write_log("Get Door State");
+	$state = get_door_state();
+	write_log("Get Door State: ".$state);
 	if( $_SESSION['open-door-nonce'] == NULL ) {
 		$_SESSION['open-door-nonce'] = get_nonce();
 	}
 	$config = new Config_Open_Door();
 	$container = array( "open-door" => array(
-    	"state" => get_door_state(),
+    		"state" => $state,
 		"nonce" => $_SESSION['open-door-nonce'],	
 		"timeout" => $config->get_open_door_timeout(),
 		"lastseen" => get_door_last_seen_minutes(),	
@@ -206,8 +207,7 @@ function make_error($error) {
 	return array( 'error'=>$error);
 }
 
-function jsonSetDoorState( $request ) {	
-	write_log("Set Door State");
+function jsonSetDoorState( $request ) {		
 	$parameters = $request->get_json_params();	
 	$values = $parameters['open-door'];
 	if($values == NULL) return make_error( 'Unknown request');
@@ -228,6 +228,7 @@ function jsonSetDoorState( $request ) {
 	if($signature != $mysign) return make_error( 'Integrity check failed!' ); 
 	
 	// Now really do the update
+	write_log("Set Door State: ".$state);
 	$oldstate= set_door_state($state);
 	$config = new Config_Open_Door();
 
@@ -258,5 +259,70 @@ function myEndSession() {
     session_destroy ();
 }
 
+// Options
+if ( is_admin() ){ // admin actions
+  add_action( 'admin_menu', 'open_door_plugin_menu' );
+  add_action( 'admin_init', 'register_open_door_settings' );
+}
+
+function register_open_door_settings() { // whitelist options
+	register_setting( 'open_door_settings', 'open_door_settings', 'open_door_settings_validate' );
+	add_settings_section('open_door_main', 'Open Door Settings', 'open_door_main_section_text', 'open_door');
+	add_settings_field('open_door_preshared_key', 'Preshared Secret Key', 'open_door_settings_key', 'open_door', 'open_door_main');
+}
+
+function open_door_main_section_text() {
+	echo '<p>Important settings</p>';
+}
+
+function open_door_settings_key() {
+	$options = get_option('open_door_settings');
+	echo "<input id='open_door_preshared_key' name='plugin_options[text_string]' size='40' type='text' value='{$options['text_string']}' />";
+} 
+
+function open_door_settings_validate($input) {
+	$newinput['text_string'] = trim($input['text_string']);
+	if(!preg_match('/^[a-z0-9]{32}$/i', $newinput['text_string'])) {
+		$newinput['text_string'] = '';
+	}
+	return $newinput;
+}
+
+function open_door_plugin_menu() {
+	add_options_page( 'Open Door Settings', 'Open Door', 'manage_options', 'open_door', 'open_door_plugin_options' );
+}
+
+function open_door_plugin_options() {
+	if ( !current_user_can( 'manage_options' ) )  {
+		wp_die( __( 'You do not have sufficient permissions to access this page.' ) );
+	}
+	echo '<div class="wrap">';
+	echo '<h1>Open Door Settings</h1>';
+	echo '<form method="post" action="options.php">';
+	settings_fields( 'open_door_settings' );
+	do_settings_sections( 'open_door' );
+	echo '<?php submit_button(); ?>';
+	echo '</form>';
+	echo '<h2>Log</h2>';
+	echo '<textarea name="message" rows="25" cols="120">';
+
+	$opendoorlog = plugin_dir_path( __FILE__ )."log.txt";
+	if(file_exists($opendoorlog)){	
+		$logfile = fopen($opendoorlog, "r");
+		if($logfile){
+			for($i=0; ($line = fgets($logfile)) !== false; $i++) {
+				echo "[".str_pad($i, 7, ' ', STR_PAD_LEFT)."]:\t".$line;
+   			}			
+			fclose($logfile );
+		} else {
+			echo 'ERROR OPENING LOGFILE';
+		}
+	} else{
+		echo ' NO LOGFILE ';
+	}
+
+	echo '</textarea>';
+	echo '</div>';
+}
 
 ?>
