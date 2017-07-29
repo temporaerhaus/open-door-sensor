@@ -1,9 +1,15 @@
-# **open-door-sensor 0.1** #
+# **open-door-sensor**
 
-### App for NodeMCU/ESP8266 to pulish current state of input pin to website
+### Firmware for esp8266 to publish current state of door sensor to website
 
-Read the project blod and documentation at [weinhof9](http://weinhof9.de/projects/open-door-sensor)
+the `esp8266` folder contains the current version.
+usage of the [platformio ide](http://platformio.org) is highly encouraged.
 
-# Summary
+this project uses a newer version of ESP8266HTTPClient,
+that is currently (2017-07-29) only available in the `espressif8266_stage` platform.
 
-TBD
+See: http://docs.platformio.org/en/latest/platforms/espressif8266.html#using-arduino-framework-with-staging-version
+
+```
+pio platform install https://github.com/platformio/platform-espressif8266.git#feature/stage
+```
