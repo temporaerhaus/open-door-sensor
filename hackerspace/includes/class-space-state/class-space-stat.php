@@ -1,7 +1,7 @@
 <?php
 
 // allow to use `is_plugin_active` function
-include_once(ABSPATH.'wp-admin/includes/plugin.php');
+include_once(ABSPATH . 'wp-admin/includes/plugin.php');
 
 /**
  * Get the Space Open/Close state from external sources
@@ -19,17 +19,15 @@ class Space_State
      */
     public function is_open()
     {
-	if (is_plugin_active('wp-open-door/wp-open-door.php')) {
-             if (function_exists('get_door_state_bool')){ // plugin version 1.0
-            		return get_door_state_bool();
-        	}
-        	else {
-            		return null;
-       	 	}
-	}
+        if (is_plugin_active('wp-open-door/wp-open-door.php')) {
+            if (function_exists('get_door_state_bool')) {
+                return get_door_state_bool();
+          	}
+      	}
         if (is_plugin_active('wp-opening-hours/wp-opening-hours.php')) {
             return $this->get_opening_hours_state();
         }
+        return null;
     }
 
     /**
@@ -39,7 +37,7 @@ class Space_State
      */
     private function get_opening_hours_state()
     {
-        if (function_exists('is_open')){ // plugin version 1.2
+        if (function_exists('is_open')) { // plugin version 1.2
             return is_open();
         }
         else {

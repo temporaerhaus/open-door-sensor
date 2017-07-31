@@ -5,10 +5,14 @@
 
 #define SENSOR_PIN D2
 #define INTERVAL (30 * 1000)
+#define TIMEOUT (5 * 60 * 1000)
 #define WIFI_SSID "verschwoerhaus-legacy"
 #define WIFI_PASSWORD "fixme"
+#define DOOR_KEY "fixme"
 
 boolean open = false;
+String door_key = DOOR_KEY;
+unsigned long previousMillis = 0;
 void sendInfo(boolean state);
 
 void setup()
@@ -45,6 +49,12 @@ void setup()
 }
 
 void loop() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= TIMEOUT) {
+    previousMillis = currentMillis;
+    sendInfo(open);
+  }
+
   if (digitalRead(SENSOR_PIN) == HIGH && !open) {
     open = true;
     sendInfo(true);
@@ -69,10 +79,10 @@ void sendInfo(boolean state) {
 
   String postMessage = "";
   if (state) {
-    postMessage = "{\"open-door\":{\"state\":\"open\"}}";
+    postMessage = "{\"open-door\":{\"state\":\"open\",\"key\":\"" + door_key + "\"}}";
     Serial.println("open");
   } else {
-    postMessage = "{\"open-door\":{\"state\":\"closed\"}}";
+    postMessage = "{\"open-door\":{\"state\":\"closed\",\"key\":\"" + door_key + "\"}}";
     Serial.println("closed");
   }
 
