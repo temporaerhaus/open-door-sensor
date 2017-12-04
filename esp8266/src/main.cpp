@@ -2,11 +2,15 @@
 #include <ESP8266WiFi.h>
 #include "./HTTPSClient/HTTPSClient.h"
 #include "dst.h"
+#include "ESPAsyncTCP.h"
+#include "ESPAsyncWebServer.h"
+#include "AsyncJson.h"
+#include "ArduinoJson.h"
 
 #define SENSOR_PIN D2
 #define INTERVAL (30 * 1000)
 #define TIMEOUT (5 * 60 * 1000)
-#define WIFI_SSID "verschwoerhaus-legacy"
+#define WIFI_SSID "internetofshit"
 #define WIFI_PASSWORD "fixme"
 #define DOOR_KEY "fixme"
 
@@ -14,6 +18,14 @@ boolean open = false;
 String door_key = DOOR_KEY;
 unsigned long previousMillis = 0;
 void sendInfo(boolean state);
+boolean check();
+AsyncWebServer server(80);
+
+
+void onRequest(AsyncWebServerRequest *request){
+  //Handle Unknown Request
+  request->send(404);
+}
 
 void setup()
 {
@@ -23,6 +35,9 @@ void setup()
 
   pinMode(SENSOR_PIN, INPUT_PULLUP);
 
+  String hostname = F("doorsensor-");
+  hostname += String(ESP.getChipId());
+  WiFi.hostname(hostname);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   Serial.print("Connecting");
@@ -46,6 +61,25 @@ void setup()
   }
   Serial.print("Clock initialized to (UTC): ");
   Serial.println(ctime(&now));
+
+  // respond to GET requests on URL /
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+    JsonObject &meta = root.createNestedObject("meta");
+    meta["freeHeap"] = ESP.getFreeHeap();
+    meta["ssid"] = WiFi.SSID();
+    meta["time"] = time(nullptr);
+    meta["now"] = millis();
+    meta["lastCheck"] = previousMillis;
+    JsonObject &state = root.createNestedObject("state");
+    state["open"] = JsonVariant((bool) open);
+    root.printTo(*response);
+    request->send(response);
+  });
+  server.onNotFound(onRequest);
+  server.begin();
 }
 
 void loop() {
@@ -55,17 +89,28 @@ void loop() {
     sendInfo(open);
   }
 
-  if (digitalRead(SENSOR_PIN) == HIGH && !open) {
-    open = true;
-    sendInfo(true);
-  } else if (digitalRead(SENSOR_PIN) == LOW && open) {
-    open = false;
-    sendInfo(false);
+  boolean old = open;
+  open = check();
+  if (old != open) {
+    sendInfo(open);
   }
 
   Serial.println(open);
   delay(INTERVAL);
 }
+
+boolean check() {
+  if (digitalRead(SENSOR_PIN) == HIGH) {
+    Serial.println("pin:open");
+    return true;
+  }
+  if (digitalRead(SENSOR_PIN) == LOW) {
+    Serial.println("pin:closed");
+    return false;
+  }
+  Serial.println("pin:???");
+  return false;
+};
 
 void sendInfo(boolean state) {
   if (WiFi.status() != WL_CONNECTED) {
