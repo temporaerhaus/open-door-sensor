@@ -1,6 +1,10 @@
+// #define USE_HTTPS_POST
+
 #include <time.h>
 #include <ESP8266WiFi.h>
-#include "./HTTPSClient/HTTPSClient.h"
+#ifdef USE_HTTPS_POST
+  #include "./HTTPSClient/HTTPSClient.h"
+#endif
 #include "dst.h"
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
@@ -20,7 +24,6 @@ unsigned long previousMillis = 0;
 void sendInfo(boolean state);
 boolean check();
 AsyncWebServer server(80);
-
 
 void onRequest(AsyncWebServerRequest *request){
   //Handle Unknown Request
@@ -118,10 +121,6 @@ void sendInfo(boolean state) {
     return;
   }
 
-  HTTPSClient http;
-  http.begin("https://verschwoerhaus.de/wp-json/open-door/state", DST_Root_CA_X3, DST_Root_CA_X3_len);
-  http.addHeader("Content-Type", "application/json");
-
   String postMessage = "";
   if (state) {
     postMessage = "{\"open-door\":{\"state\":\"open\",\"key\":\"" + door_key + "\"}}";
@@ -131,6 +130,10 @@ void sendInfo(boolean state) {
     Serial.println("closed");
   }
 
+  #ifdef USE_HTTPS_POST
+  HTTPSClient http;
+  http.begin("https://verschwoerhaus.de/wp-json/open-door/state", DST_Root_CA_X3, DST_Root_CA_X3_len);
+  http.addHeader("Content-Type", "application/json");
   int httpCode = http.POST(postMessage);
   if (httpCode > 0) {
     Serial.printf("[HTTPS] POST: code: %d\n", httpCode);
@@ -139,4 +142,5 @@ void sendInfo(boolean state) {
     Serial.printf("[HTTPS] POST: failed, error: %s\n", http.errorToString(httpCode).c_str());
   }
   http.end();
+  #endif
 }
