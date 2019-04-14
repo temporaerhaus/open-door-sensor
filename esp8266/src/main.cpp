@@ -12,6 +12,9 @@
 #include "ArduinoJson.h"
 
 #define SENSOR_PIN D2
+#define RING_PIN D3
+#define WIPE_PIN D4
+
 #define INTERVAL (30 * 1000)
 #define TIMEOUT (5 * 60 * 1000)
 #define WIFI_SSID "internetofshit"
@@ -19,8 +22,12 @@
 #define DOOR_KEY "fixme"
 
 boolean open = false;
+boolean ringing = false;
+boolean wiping = false;
 String door_key = DOOR_KEY;
 unsigned long previousMillis = 0;
+unsigned long lastRing = 0;
+unsigned long lastWipe = 0;
 void sendInfo(boolean state);
 boolean check();
 AsyncWebServer server(80);
@@ -37,6 +44,8 @@ void setup()
   // Serial.setDebugOutput(true);
 
   pinMode(SENSOR_PIN, INPUT_PULLUP);
+  pinMode(RING_PIN, INPUT_PULLUP);
+  pinMode(WIPE_PIN, INPUT_PULLUP);
 
   String hostname = F("doorsensor-");
   hostname += String(ESP.getChipId());
@@ -76,6 +85,8 @@ void setup()
     meta["time"] = time(nullptr);
     meta["now"] = millis();
     meta["lastCheck"] = previousMillis;
+    meta["lastRing"] = lastRing;
+    meta["lastWipe"] = lastWipe;
     JsonObject &state = root.createNestedObject("state");
     state["open"] = JsonVariant((bool) open);
     root.printTo(*response);
@@ -86,20 +97,37 @@ void setup()
 }
 
 void loop() {
+  // periodic update
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= TIMEOUT) {
     previousMillis = currentMillis;
     sendInfo(open);
   }
 
+  // door
   boolean old = open;
   open = check();
   if (old != open) {
     sendInfo(open);
   }
 
-  Serial.println(open);
-  delay(INTERVAL);
+  // ring
+  boolean oldRinging = ringing;
+  ringing = digitalRead(RING_PIN);
+  if (ringing != oldRinging) {
+    lastRing = millis();
+  }
+
+  // wipe
+  boolean oldWiping = wiping;
+  wiping = digitalRead(WIPE_PIN);
+  if (wiping != oldWiping) {
+    lastWipe = millis();
+  }
+
+  //Serial.println(open);
+  //delay(INTERVAL);
+  delay(50);
 }
 
 boolean check() {
