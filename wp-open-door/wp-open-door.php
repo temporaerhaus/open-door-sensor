@@ -149,6 +149,27 @@ function make_error($error) {
   return array('error' => $error);
 }
 
+function getAuthorizationHeader(){
+  $headers = null;
+  if (isset($_SERVER['Authorization'])) {
+    $headers = trim($_SERVER["Authorization"]);
+  } else if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    $headers = trim($_SERVER["HTTP_AUTHORIZATION"]);
+  }
+  return $headers;
+}
+
+function getBearerToken() {
+  $headers = getAuthorizationHeader();
+  if (empty($headers)) {
+    return null;
+  }
+  if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
+    return $matches[1];
+  }
+  return null;
+}
+
 function jsonSetDoorState($request) {
   $parameters = $request->get_json_params();
   $values = $parameters['open-door'];
@@ -156,7 +177,10 @@ function jsonSetDoorState($request) {
 
   $config = new Config_Open_Door();
 
-  $key = $values['key'];
+  $key = getBearerToken();
+  if (empty($key)) {
+    $key = $values['key'];
+  }
   if ($key == NULL) return make_error('Forbidden without key');
   if ($key != $config->get_open_door_key()) return make_error('Invalid key');
 
